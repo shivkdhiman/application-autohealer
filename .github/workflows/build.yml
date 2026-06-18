@@ -1,0 +1,78 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push backend
+        run: |
+          docker build -t $REGISTRY/autopilot-backend:${{ github.sha }} \
+                       -t $REGISTRY/autopilot-backend:latest \
+                       ./backend
+          docker push $REGISTRY/autopilot-backend:${{ github.sha }}
+          docker push $REGISTRY/autopilot-backend:latest
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push frontend
+        run: |
+          docker build -t $REGISTRY/autopilot-frontend:${{ github.sha }} \
+                       -t $REGISTRY/autopilot-frontend:latest \
+                       ./frontend
+          docker push $REGISTRY/autopilot-frontend:${{ github.sha }}
+          docker push $REGISTRY/autopilot-frontend:latest
+
+  build-agent:
+    name: Build Agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push agent
+        run: |
+          docker build -t $REGISTRY/autopilot-agent:${{ github.sha }} \
+                       -t $REGISTRY/autopilot-agent:latest \
+                       ./agent
+          docker push $REGISTRY/autopilot-agent:${{ github.sha }}
+          docker push $REGISTRY/autopilot-agent:latest

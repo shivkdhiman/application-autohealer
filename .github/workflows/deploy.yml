@@ -1,0 +1,63 @@
+name: Deploy to GKE
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types: [completed]
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  NAMESPACE: default
+
+jobs:
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Create Anthropic API key secret
+        run: |
+          kubectl create secret generic anthropic-secret \
+            --from-literal=api_key="${{ secrets.ANTHROPIC_API_KEY }}" \
+            --namespace=${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Substitute image tags in manifests
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          sed -i "s|REGISTRY|${{ env.REGISTRY }}|g" k8s/backend-deployment.yaml
+          sed -i "s|REGISTRY|${{ env.REGISTRY }}|g" k8s/frontend-deployment.yaml
+          sed -i "s|REGISTRY|${{ env.REGISTRY }}|g" k8s/agent-deployment.yaml
+          sed -i "s|:latest|:${SHA}|g" k8s/backend-deployment.yaml
+          sed -i "s|:latest|:${SHA}|g" k8s/frontend-deployment.yaml
+          sed -i "s|:latest|:${SHA}|g" k8s/agent-deployment.yaml
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s/ --namespace=${{ env.NAMESPACE }}
+
+      - name: Wait for rollouts
+        run: |
+          kubectl rollout status deployment/backend   --namespace=${{ env.NAMESPACE }} --timeout=120s
+          kubectl rollout status deployment/frontend  --namespace=${{ env.NAMESPACE }} --timeout=120s
+          kubectl rollout status deployment/autopilot-agent --namespace=${{ env.NAMESPACE }} --timeout=120s
+
+      - name: Show deployed pods
+        run: kubectl get pods --namespace=${{ env.NAMESPACE }}
