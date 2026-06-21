@@ -16,17 +16,17 @@ resource "google_container_cluster" "primary" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  ip_allocation_policy {
-    use_ip_aliases = true
-  }
-
   release_channel {
     channel = "STABLE"
   }
 
   addons_config {
-    http_load_balancing {}
-    horizontal_pod_autoscaling {}
+    http_load_balancing {
+      disabled = false
+    }
+    horizontal_pod_autoscaling {
+      disabled = false
+    }
   }
 
   workload_identity_config {
