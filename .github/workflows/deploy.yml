@@ -35,10 +35,12 @@ jobs:
 
       - name: Create Anthropic API key secret
         run: |
+          printf '%s' "${{ secrets.ANTHROPIC_API_KEY }}" > /tmp/anthropic-api-key
           kubectl create secret generic anthropic-secret \
-            --from-literal=api_key="${{ secrets.ANTHROPIC_API_KEY }}" \
+            --from-file=api_key=/tmp/anthropic-api-key \
             --namespace=${{ env.NAMESPACE }} \
             --dry-run=client -o yaml | kubectl apply -f -
+          rm -f /tmp/anthropic-api-key
 
       - name: Substitute image tags in manifests
         run: |
