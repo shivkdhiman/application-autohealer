@@ -3,7 +3,9 @@
     "allow": [
       "Bash(gh auth *)",
       "PowerShell(gh auth status 2>&1)",
-      "Bash(mkdir -p \"C:\\\\Users\\\\Manish Sharma\\\\.claude\\\\projects\\\\C--Users-Manish-Sharma-Desktop-IIT-Mandi-autopilot-app\\\\memory\")"
+      "Bash(mkdir -p \"C:\\\\Users\\\\Manish Sharma\\\\.claude\\\\projects\\\\C--Users-Manish-Sharma-Desktop-IIT-Mandi-autopilot-app\\\\memory\")",
+      "Bash(kubectl get *)",
+      "Bash(kubectl rollout *)"
     ]
   }
 }
