@@ -1,0 +1,116 @@
+# Additional failure simulators for testing the autohealer agents
+# Apply: kubectl apply -f k8s/more-simulators.yaml
+# Remove: kubectl delete -f k8s/more-simulators.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readiness-fail-simulator
+  namespace: autohealer
+  labels:
+    app: readiness-fail-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: readiness-fail-simulator
+  template:
+    metadata:
+      labels:
+        app: readiness-fail-simulator
+    spec:
+      containers:
+        - name: readiness-fail
+          image: busybox
+          command: ["sh", "-c", "sleep 3600"]
+          readinessProbe:
+            exec:
+              command: ["false"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: liveness-fail-simulator
+  namespace: autohealer
+  labels:
+    app: liveness-fail-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: liveness-fail-simulator
+  template:
+    metadata:
+      labels:
+        app: liveness-fail-simulator
+    spec:
+      containers:
+        - name: liveness-fail
+          image: busybox
+          command: ["sh", "-c", "sleep 3600"]
+          livenessProbe:
+            exec:
+              command: ["false"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+---
+
+# OOM simulator: Python process that steadily allocates memory until the container is OOMKilled.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oom-simulator
+  namespace: autohealer
+  labels:
+    app: oom-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oom-simulator
+  template:
+    metadata:
+      labels:
+        app: oom-simulator
+    spec:
+      containers:
+        - name: oom-sim
+          image: python:3.11-slim
+          command: ["python", "-c", "import time\nL=[]\nwhile True:\n    L.append('x'*1000000)\n    time.sleep(0.05)"]
+          resources:
+            limits:
+              memory: "30Mi"
+            requests:
+              memory: "10Mi"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-config-simulator
+  namespace: autohealer
+  labels:
+    app: bad-config-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad-config-simulator
+  template:
+    metadata:
+      labels:
+        app: bad-config-simulator
+    spec:
+      containers:
+        - name: bad-config
+          image: busybox
+          env:
+            - name: BAD_CONFIG
+              value: "1"
+          command: ["sh", "-c", "if [ \"$BAD_CONFIG\" = \"1\" ]; then echo 'bad config'; exit 1; else sleep 3600; fi"]
