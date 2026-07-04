@@ -36,6 +36,35 @@ def ask_claude(pod_info: dict, logs: str, describe: str, events: str) -> dict:
     return json.loads(raw)
 
 
+def _pod_status_reason(pod: dict) -> str:
+    container_statuses = pod.get("status", {}).get("containerStatuses", [])
+    for cs in container_statuses:
+        state = cs.get("state", {})
+        waiting = state.get("waiting", {})
+        if waiting.get("reason"):
+            return waiting["reason"]
+        terminated = state.get("terminated", {})
+        if terminated.get("reason"):
+            return terminated["reason"]
+    conditions = pod.get("status", {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == "Ready" and cond.get("status") == "False":
+            return cond.get("reason", "NotReady")
+    return "Running"
+
+
+def _choose_repair_pod(pods: list[dict]) -> dict:
+    unhealthy_pods = []
+    for pod in pods:
+        reason = _pod_status_reason(pod)
+        if reason not in ("Running", "Succeeded", "Completed"):
+            unhealthy_pods.append((reason, pod))
+    if unhealthy_pods:
+        # Prefer a pod with an explicit failure reason
+        return sorted(unhealthy_pods, key=lambda item: item[0] == "NotReady")[0][1]
+    return pods[0]
+
+
 def repair_deployment(deployment: str, pod_info: dict) -> str:
     pods = get_pods_for_deployment(deployment, NAMESPACE)
     if not pods:
@@ -43,9 +72,10 @@ def repair_deployment(deployment: str, pod_info: dict) -> str:
         log.warning(msg)
         return msg
 
-    pod = pods[0]["metadata"]["name"]
-    logs = get_pod_logs(pod, NAMESPACE)
-    describe = describe_pod(pod, NAMESPACE)
+    pod = _choose_repair_pod(pods)
+    pod_name = pod["metadata"]["name"]
+    logs = get_pod_logs(pod_name, NAMESPACE)
+    describe = describe_pod(pod_name, NAMESPACE)
     events = get_events(NAMESPACE)
 
     try:
