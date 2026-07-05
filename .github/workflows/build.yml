@@ -10,7 +10,6 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}
 
-  
 jobs:
   build-backend:
     name: Build Backend
