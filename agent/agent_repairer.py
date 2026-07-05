@@ -1,7 +1,9 @@
+import os
 import time
 import json
 import logging
 from common import log, NAMESPACE, POLL_INTERVAL, client
+from rag_memory import RepairRAGStore
 from tools import (
     get_deployments_with_label,
     get_pods_for_deployment,
@@ -18,10 +20,16 @@ from tools import (
 from prompts import SYSTEM_PROMPT, build_diagnosis_prompt
 
 MARKER_LABEL = "autohealer/repair-needed"
+RAG_STORAGE_DIR = os.getenv("RAG_STORAGE_DIR", "/tmp/repair-rag")
+rag_store = RepairRAGStore(storage_dir=RAG_STORAGE_DIR)
 
 
 def ask_claude(pod_info: dict, logs: str, describe: str, events: str) -> dict:
-    user_msg = build_diagnosis_prompt(pod_info, logs, describe, events)
+    similar_cases = rag_store.search(
+        f"{pod_info.get('reason', '')} {logs[:1000]} {describe[:1000]}",
+        limit=3,
+    )
+    user_msg = build_diagnosis_prompt(pod_info, logs, describe, events, similar_cases)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=512,
@@ -112,6 +120,15 @@ def repair_deployment(deployment: str, pod_info: dict) -> str:
     if action in ("restart_pod", "rollback_deployment"):
         remove_deployment_labels(deployment, [MARKER_LABEL, "autohealer/failure-reason"], NAMESPACE)
         log.info("Cleared repair labels for deployment %s", deployment)
+
+    rag_store.add_case(
+        deployment=deployment,
+        pod_name=pod_name,
+        failure_reason=pod_info.get("reason", "unknown"),
+        action=action or "no_action",
+        outcome=result,
+        logs=logs,
+    )
 
     return result
 

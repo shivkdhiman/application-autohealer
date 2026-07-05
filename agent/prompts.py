@@ -6,6 +6,7 @@ You will be given:
 - Recent pod logs
 - kubectl describe output
 - Recent cluster events
+- A short list of similar past repair cases retrieved from a local RAG knowledge base
 
 Your response must be a JSON object with exactly these fields:
 {
@@ -25,12 +26,30 @@ Be concise and decisive. Do not ask for more information.
 """.strip()
 
 
-def build_diagnosis_prompt(pod_info: dict, logs: str, describe: str, events: str) -> str:
+def build_diagnosis_prompt(
+    pod_info: dict,
+    logs: str,
+    describe: str,
+    events: str,
+    similar_cases: list[dict] | None = None,
+) -> str:
+    similar_context = ""
+    if similar_cases:
+        similar_context = "\n".join(
+            [
+                f"- Past case: deployment={item['deployment']}, failure={item['failure_reason']}, action={item['action']}, outcome={item['outcome']}"
+                for item in similar_cases
+            ]
+        )
+
     return f"""
 Pod: {pod_info['pod']}
 Failure Reason: {pod_info['reason']}
 Restart Count: {pod_info['restarts']}
 Container: {pod_info['container']}
+
+--- Similar Past Repair Cases ---
+{similar_context or 'None'}
 
 --- Recent Logs ---
 {logs[:2000]}

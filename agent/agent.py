@@ -3,6 +3,7 @@ import time
 import json
 import logging
 import anthropic
+from rag_memory import RepairRAGStore
 from tools import (
     get_unhealthy_pods,
     get_pod_logs,
@@ -25,12 +26,18 @@ log = logging.getLogger("autopilot-agent")
 NAMESPACE = os.getenv("NAMESPACE", "default")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+RAG_STORAGE_DIR = os.getenv("RAG_STORAGE_DIR", "/tmp/repair-rag")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+rag_store = RepairRAGStore(storage_dir=RAG_STORAGE_DIR)
 
 
 def ask_claude(pod_info: dict, logs: str, describe: str, events: str) -> dict:
-    user_msg = build_diagnosis_prompt(pod_info, logs, describe, events)
+    similar_cases = rag_store.search(
+        f"{pod_info.get('reason', '')} {logs[:1000]} {describe[:1000]}",
+        limit=3,
+    )
+    user_msg = build_diagnosis_prompt(pod_info, logs, describe, events, similar_cases)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=512,
