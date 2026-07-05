@@ -39,7 +39,7 @@ def ask_claude(pod_info: dict, logs: str, describe: str, events: str) -> dict:
     )
     user_msg = build_diagnosis_prompt(pod_info, logs, describe, events, similar_cases)
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5",
         max_tokens=512,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],

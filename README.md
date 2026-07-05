@@ -10,6 +10,15 @@ This repository contains an automated Kubernetes self-healing demo.
 - `backend/` and `frontend/` contain the application workloads.
 - `k8s/` contains Kubernetes manifests for the namespace, app workloads, agents, and failure simulators.
 
+| Simulator                 | Current Status                           | Interpretation                                                           |
+| ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------ |
+| `bad-deploy-simulator`    | `ImagePullBackOff`                       | ❌ Still broken. The image name is invalid or the image cannot be pulled. |
+| `bad-config-simulator`    | `CrashLoopBackOff` / `Error`             | ⚠️ Pod keeps crashing because of a bad configuration.                    |
+| `crash-simulator`         | `CrashLoopBackOff`                       | ⚠️ Container starts and then crashes repeatedly.                         |
+| `liveness-fail-simulator` | New pod created after old one terminated | ✅ Kubernetes/AutoHealer restarted it due to liveness probe failures.     |
+| `oom-simulator`           | `OOMKilled`                              | ⚠️ Container exceeded its memory limit and was killed.                   |
+
+
 ## Auto-healing flow
 
 When a recoverable app failure happens, the agents should do the following:
@@ -46,29 +55,86 @@ Expected behavior:
 - The isolator detects the unhealthy pod and marks the deployment for repair.
 - The repairer attempts a rollback to the previous working revision.
 
-### 2) Probe-based failures (escalation path)
+The other simulators below (`k8s/simulate-crash.yaml`, `k8s/more-simulators.yaml`) are deployed and cycling continuously in the `autohealer` namespace, so no injection is needed — just observe.
 
-The simulator workloads exercise configuration issues such as broken readiness or liveness probes:
-
-```bash
-kubectl get pods -n autohealer
-kubectl logs -n autohealer deployment/autopilot-repairer --tail=100
-```
-
-Expected behavior:
-- The repairer should escalate for probe-related failures because restarting the pod will not fix a broken probe spec.
-
-### 3) Crash loop or OOM scenarios
-
-These workloads are useful for checking how the agents classify transient runtime failures:
+Quick overview:
 
 ```bash
 kubectl get pods -n autohealer
-kubectl logs -n autohealer deployment/autopilot-repairer --tail=100
 ```
 
-Expected behavior:
-- The repairer may decide to escalate or take no action depending on whether the failure appears transient or configuration-driven.
+### 2) Crash loop (`crash-simulator`)
+
+Container exits immediately. Expect the isolator to detect `CrashLoopBackOff` and restart it, and the repairer to diagnose it (likely **escalate**, since restarting a pod that always exits won't help).
+
+```bash
+kubectl describe pod -n autohealer -l app=crash-simulator | tail -30
+kubectl get deployment crash-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-isolator --tail=100 | grep -i crash
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i crash-simulator
+```
+
+### 3) Bad image / deployment regression (`bad-deploy-simulator`)
+
+Non-existent image tag. Expect the isolator to mark it for repair and the repairer to attempt `rollout undo` (there's no prior good revision here, so watch what it actually decides).
+
+```bash
+kubectl describe pod -n autohealer -l app=bad-deploy-simulator | Select-Object -Last 30
+kubectl get deployment bad-deploy-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i bad-deploy-simulator
+```
+
+### 4) OOM kill (`oom-simulator`)
+
+Steadily allocates memory until OOMKilled. Expect `CrashLoopBackOff`/OOMKilled reason, with the repairer likely **escalating** (transient/runtime, not a rollback candidate).
+
+```bash
+kubectl describe pod -n autohealer -l app=oom-simulator | grep -A5 "Last State"
+kubectl get deployment oom-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i oom-simulator
+```
+
+### 5) Broken readiness probe (`readiness-fail-simulator`)
+
+Pod runs fine but the readiness probe always fails. Expect **escalate**, since restarting won't fix a bad probe spec.
+
+```bash
+kubectl describe pod -n autohealer -l app=readiness-fail-simulator | grep -A5 Readiness
+kubectl get deployment readiness-fail-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i readiness-fail
+```
+
+### 6) Broken liveness probe (`liveness-fail-simulator`)
+
+Liveness probe always fails, so kubelet kills/restarts the container in a loop. Expect **escalate**, for the same reason as above.
+
+```bash
+kubectl describe pod -n autohealer -l app=liveness-fail-simulator | grep -A5 Liveness
+kubectl get deployment liveness-fail-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i liveness-fail
+```
+
+### 7) Bad config (`bad-config-simulator`)
+
+Container exits due to a bad env var. Expect `CrashLoopBackOff`/`Error`, with the repairer likely **escalating** (a config fix isn't something rollback/restart solves).
+
+```bash
+kubectl logs -n autohealer -l app=bad-config-simulator --tail=10
+kubectl get deployment bad-config-simulator -n autohealer -o jsonpath='{.metadata.labels}{"\n"}'
+kubectl logs -n autohealer deployment/autopilot-repairer --tail=100 | grep -A5 -i bad-config
+```
+
+### Full agent trace
+
+Useful for a live demo — run these two in split panes. You'll see the isolator flag pods every `POLL_INTERVAL` seconds and the repairer print its `Repair decision` JSON (Claude's diagnosis: `action`, `target`, `reason`) for each one live.
+
+```bash
+kubectl logs -n autohealer deployment/autopilot-isolator -f --tail=20
+```
+
+```bash
+kubectl logs -n autohealer deployment/autopilot-repairer -f --tail=20
+```
 
 ## Important note about pod recreation
 
