@@ -18,6 +18,8 @@ This repository contains an automated Kubernetes self-healing demo.
 | `liveness-fail-simulator` | New pod created after old one terminated | ✅ Kubernetes/AutoHealer restarted it due to liveness probe failures.     |
 | `oom-simulator`           | `OOMKilled`                              | ⚠️ Container exceeded its memory limit and was killed.                   |
 
+Commands:
+kubectl scale deployment --all --replicas=0 -n autohealer
 
 ## Auto-healing flow
 
