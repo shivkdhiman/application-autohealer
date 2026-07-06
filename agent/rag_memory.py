@@ -120,3 +120,39 @@ class RepairRAGStore:
             }
             for doc in docs
         ]
+
+    def list_recent(self, limit: int = 50) -> list[dict[str, Any]]:
+        store = self._get_vectorstore()
+
+        if isinstance(store, _FallbackStore):
+            items = store._items[-limit:]
+            return [
+                {
+                    "deployment": item.get("metadata", {}).get("deployment", ""),
+                    "pod_name": item.get("metadata", {}).get("pod_name", ""),
+                    "failure_reason": item.get("metadata", {}).get("failure_reason", ""),
+                    "action": item.get("metadata", {}).get("action", ""),
+                    "outcome": item.get("metadata", {}).get("outcome", ""),
+                    "content": item.get("page_content", ""),
+                }
+                for item in reversed(items)
+            ]
+
+        try:
+            raw = store.get(include=["documents", "metadatas"])
+            docs = raw.get("documents") or []
+            metas = raw.get("metadatas") or []
+            combined = list(zip(docs, metas))[-limit:]
+            return [
+                {
+                    "deployment": (meta or {}).get("deployment", ""),
+                    "pod_name": (meta or {}).get("pod_name", ""),
+                    "failure_reason": (meta or {}).get("failure_reason", ""),
+                    "action": (meta or {}).get("action", ""),
+                    "outcome": (meta or {}).get("outcome", ""),
+                    "content": doc,
+                }
+                for doc, meta in reversed(combined)
+            ]
+        except Exception:
+            return []

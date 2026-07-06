@@ -203,6 +203,74 @@ function Dashboard({ records, loading, error, refresh, onDeleted }) {
   );
 }
 
+function RagMemory() {
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/rag");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load RAG data.");
+      setCases(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message);
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return (
+    <div className="card">
+      <div className="dashboard-header">
+        <h2>RAG Memory ({cases.length})</h2>
+        <div className="dashboard-actions">
+          <button type="button" onClick={refresh} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="alert">
+          {error} (Reachable only when running inside the cluster, alongside the autopilot-repairer service.)
+        </div>
+      )}
+
+      <div className="rag-list">
+        {!error && cases.length === 0 && (
+          <p className="empty-state">{loading ? "Loading..." : "No repair cases recorded yet."}</p>
+        )}
+        {cases.map((c, i) => (
+          <div className="rag-item" key={i}>
+            <div className="rag-item-header" onClick={() => setExpandedId(expandedId === i ? null : i)}>
+              <span className="rag-deployment">{c.deployment || "unknown"}</span>
+              <span className="rag-action">{c.action}</span>
+              <span className="rag-reason">{c.failure_reason}</span>
+            </div>
+            {expandedId === i && (
+              <div className="rag-item-body">
+                <p><strong>Pod:</strong> {c.pod_name}</p>
+                <p><strong>Outcome:</strong> {c.outcome}</p>
+                <pre className="rag-content">{c.content}</pre>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = useState("form");
   const { records, loading, error, refresh, setRecords } = useRecords();
@@ -227,6 +295,9 @@ function App() {
           <button className={tab === "dashboard" ? "tab active" : "tab"} onClick={() => setTab("dashboard")}>
             Admin Dashboard
           </button>
+          <button className={tab === "rag" ? "tab active" : "tab"} onClick={() => setTab("rag")}>
+            RAG Memory
+          </button>
         </nav>
       </header>
 
@@ -235,6 +306,7 @@ function App() {
         {tab === "dashboard" && (
           <Dashboard records={records} loading={loading} error={error} refresh={refresh} onDeleted={handleDeleted} />
         )}
+        {tab === "rag" && <RagMemory />}
       </main>
     </div>
   );

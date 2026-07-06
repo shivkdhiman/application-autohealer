@@ -2,6 +2,8 @@ import os
 import time
 import json
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from common import log, NAMESPACE, POLL_INTERVAL, client
 from rag_memory import RepairRAGStore
 from tools import (
@@ -21,7 +23,44 @@ from prompts import SYSTEM_PROMPT, build_diagnosis_prompt
 
 MARKER_LABEL = "autohealer/repair-needed"
 RAG_STORAGE_DIR = os.getenv("RAG_STORAGE_DIR", "/tmp/repair-rag")
+RAG_HTTP_PORT = int(os.getenv("RAG_HTTP_PORT", "8001"))
 rag_store = RepairRAGStore(storage_dir=RAG_STORAGE_DIR)
+
+
+class RagRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/rag"):
+            try:
+                data = rag_store.list_recent(limit=100)
+                body = json.dumps(data).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                log.error("RAG HTTP endpoint error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+        elif self.path.startswith("/health"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_rag_http_server():
+    server = HTTPServer(("0.0.0.0", RAG_HTTP_PORT), RagRequestHandler)
+    log.info("RAG HTTP server listening on port %d", RAG_HTTP_PORT)
+    server.serve_forever()
 
 
 def ask_claude(pod_info: dict, logs: str, describe: str, events: str) -> dict:
@@ -165,6 +204,7 @@ def run_once():
 
 if __name__ == "__main__":
     log.info("Autopilot repairer started. Poll interval: %ds", POLL_INTERVAL)
+    threading.Thread(target=start_rag_http_server, daemon=True).start()
     while True:
         try:
             run_once()

@@ -92,6 +92,8 @@ spec:
         - name: agent-repairer
           image: gcr.io/auto-app-healer/autopilot-agent:latest
           command: ["python", "agent_repairer.py"]
+          ports:
+            - containerPort: 8001
           env:
             - name: NAMESPACE
               value: "autohealer"
@@ -102,3 +104,16 @@ spec:
                 secretKeyRef:
                   name: anthropic-secret
                   key: api_key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autopilot-repairer
+  namespace: autohealer
+spec:
+  selector:
+    app: autopilot-repairer
+  ports:
+    - port: 8001
+      targetPort: 8001
+  type: ClusterIP

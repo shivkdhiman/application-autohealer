@@ -8,6 +8,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const RECORDS_FILE = path.join(DATA_DIR, "records.json");
 const MAX_NOTES_LENGTH = 2000;
+const RAG_SERVICE_URL =
+  process.env.RAG_SERVICE_URL || "http://autopilot-repairer.autohealer.svc.cluster.local:8001/rag";
 
 const MIME_TYPES = {
   ".html": "text/html",
@@ -77,6 +79,47 @@ function validateRecord(input) {
   return { errors, value: { name, dob, jobTitle, notes } };
 }
 
+function fetchRagData() {
+  return new Promise((resolve) => {
+    let target;
+    try {
+      target = new URL(RAG_SERVICE_URL);
+    } catch (e) {
+      return resolve({ ok: false, error: "Invalid RAG_SERVICE_URL." });
+    }
+
+    const req = http.get(
+      {
+        hostname: target.hostname,
+        port: target.port || 80,
+        path: target.pathname,
+        timeout: 3000,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            return resolve({ ok: false, error: `RAG service returned ${res.statusCode}.` });
+          }
+          try {
+            resolve({ ok: true, data: JSON.parse(data) });
+          } catch (e) {
+            resolve({ ok: false, error: "Invalid response from RAG service." });
+          }
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ ok: false, error: "RAG service request timed out." });
+    });
+    req.on("error", (err) => {
+      resolve({ ok: false, error: `RAG service unreachable: ${err.message}` });
+    });
+  });
+}
+
 function serveStatic(req, res) {
   const parsed = new URL(req.url, "http://localhost");
   let filePath = parsed.pathname === "/" ? "/index.html" : parsed.pathname;
@@ -99,13 +142,19 @@ function serveStatic(req, res) {
   });
 }
 
-function handleApi(req, res, pathname) {
+async function handleApi(req, res, pathname) {
   if (pathname === "/health") {
     return sendJSON(res, 200, { status: "ok", service: "backend" });
   }
 
   if (pathname === "/api/status") {
     return sendJSON(res, 200, { message: "Backend is running", version: "2.0.0" });
+  }
+
+  if (pathname === "/api/rag" && req.method === "GET") {
+    const result = await fetchRagData();
+    if (!result.ok) return sendJSON(res, 502, { error: result.error });
+    return sendJSON(res, 200, result.data);
   }
 
   if (pathname === "/api/records" && req.method === "GET") {
