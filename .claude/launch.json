@@ -6,12 +6,7 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "cwd": "backend",
-      "port": 8000,
-      "env": {
-        "RAG_SERVICE_URL": "http://localhost:8001/rag",
-        "REPAIRER_EVENTS_URL": "http://localhost:8001/events",
-        "ISOLATOR_EVENTS_URL": "http://localhost:8002/events"
-      }
+      "port": 8000
     }
   ]
 }

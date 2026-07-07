@@ -35,6 +35,7 @@ docker run -p 8000:8000 records-admin
 - `POST /api/records` — create a record. Body: `{ name, dob, jobTitle, notes }`. `name`, `dob`, and `jobTitle` are required; `notes` is optional and limited to 2000 characters.
 - `DELETE /api/records/:id` — delete a record by id.
 - `GET /api/rag` — proxies the auto-healer's RAG repair-case memory from the `autopilot-repairer` agent (see below). Returns `502` with an error message if the agent's RAG service isn't reachable.
+- `GET /api/timeline` — proxies and merges step-by-step activity events from both agents (see Live Timeline tab below). Returns `{ events, warnings }`; `warnings` is present if one agent's event feed was unreachable but the other still returned data.
 - `GET /health` — health check (used by the Kubernetes probes in `k8s/backend-deployment.yaml`).
 
 ## RAG Memory tab
@@ -45,6 +46,18 @@ This works by the agent exposing its own small HTTP server (`GET /rag` on port 8
 
 - In-cluster, this resolves automatically via `http://autopilot-repairer.autohealer.svc.cluster.local:8001/rag`.
 - Outside the cluster (e.g. running `node server.js` locally), set `RAG_SERVICE_URL` to point at wherever that endpoint is reachable, or the tab will just show a "service unreachable" message.
+
+## Live Timeline tab
+
+Shows the end-to-end auto-healing flow as it happens — every step from both agents (pod detected, isolated, labeled, picked up, diagnosing, decision, action result, labels cleared/kept), newest first, auto-refreshing every 5 seconds. This is the dashboard equivalent of watching `kubectl logs -f` on both agents at once, without needing a terminal.
+
+Each agent keeps its last 200 events in memory (`agent/event_log.py`) and exposes them over `GET /events`:
+- `autopilot-isolator` on port 8002 (`k8s/agent-deployment.yaml` — `autopilot-isolator` Service)
+- `autopilot-repairer` on port 8001 (same pattern as the RAG endpoint, reusing its existing HTTP server)
+
+The backend fetches both, merges, and sorts them by timestamp via `GET /api/timeline`. If one agent's feed is unreachable, the tab still shows events from the other with a "Partial data" notice instead of failing outright. To point this at non-default locations (e.g. local testing), set `ISOLATOR_EVENTS_URL` and `REPAIRER_EVENTS_URL`.
+
+Event history is in-memory only — it resets if an agent pod restarts.
 
 ## Notes
 
