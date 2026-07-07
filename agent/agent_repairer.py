@@ -171,7 +171,7 @@ def repair_deployment(deployment: str, pods: list[dict]) -> str:
         result = "no_action"
         log.info("No action taken for deployment %s.", deployment)
 
-    if action in ("restart_pod", "rollback_deployment") and succeeded:
+    if action == "no_action" or (action in ("restart_pod", "rollback_deployment") and succeeded):
         remove_deployment_labels(deployment, [MARKER_LABEL, "autohealer/failure-reason"], NAMESPACE)
         log.info("Cleared repair labels for deployment %s", deployment)
     elif action in ("restart_pod", "rollback_deployment") and not succeeded:
