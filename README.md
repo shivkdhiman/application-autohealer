@@ -1,87 +1,42 @@
 # Application Autohealer
 
-An automated Kubernetes self-healing demo running on GKE. Two agents watch the cluster and use Claude to diagnose and repair failures.
+Self-healing Kubernetes demo on GKE. Two agents watch the cluster and use Claude to diagnose and fix failures.
 
-## What's here
+- `autopilot-isolator` — finds unhealthy pods, isolates them, flags the deployment.
+- `autopilot-repairer` — diagnoses the flagged deployment with Claude, then `restart_pod`, `rollback_deployment`, or `escalate`.
 
-- `agent/` — the two agents.
-  - `agent_isolator.py` — detects unhealthy pods, isolates them, and flags the deployment for repair.
-  - `agent_repairer.py` — diagnoses flagged deployments with Claude and picks one of: `restart_pod`, `rollback_deployment`, `escalate`.
-- `backend/` — the Node.js + React admin app (see `backend/README.md`), also the workload used for the rollback demo below.
-- `frontend/` — static demo page.
-- `k8s/` — manifests for the namespace, app workloads, agents, and the one crash simulator.
+## Run the demo
 
-## How it works
+1. Watch the cluster: `k9s -n autohealer` (`l` for logs on a selected pod, `Esc` to go back).
+2. Pick an error injection below and run it against `backend`.
+3. Watch it recover (or escalate) in k9s / repairer logs.
+4. Revert: `kubectl rollout undo deployment/backend -n autohealer`
 
-1. `autopilot-isolator` polls the namespace every `POLL_INTERVAL` seconds and deletes any unhealthy pod it finds.
-2. It labels the deployment `autohealer/repair-needed=true`.
-3. `autopilot-repairer` sees the label, gathers logs/describe/events, and asks Claude to diagnose it.
-4. Claude picks an action:
-   - **Recent image/deployment change** → `rollback_deployment` (`kubectl rollout undo`)
-   - **Transient crash** → `restart_pod`
-   - **Needs a human** (bad config, broken probe, no rollback target, etc.) → `escalate`, label stays for visibility
-5. On a successful fix, the label is cleared.
+## Error injection commands (`backend`)
 
-## Demo: 2 scenarios
+| Failure | Command | Expected |
+|---|---|---|
+| Bad image tag | `kubectl set image deployment/backend backend=gcr.io/auto-app-healer/autopilot-backend:invalidtag -n autohealer` | Rolled back automatically |
+| Crash on startup | `kubectl patch deployment backend -n autohealer --patch-file k8s/demo-patches/crash-command.json` | Rolled back or escalated |
+| Broken liveness probe | `kubectl patch deployment backend -n autohealer --patch-file k8s/demo-patches/broken-liveness.json` | Rolled back or escalated |
+| OOM (memory squeeze) | `kubectl patch deployment backend -n autohealer --patch-file k8s/demo-patches/oom-memory.json` | Rolled back or escalated |
+| Bad env var | `kubectl set env deployment/backend BAD_CONFIG=1 -n autohealer` | Rolled back or escalated |
 
-Endpoint: `http://<backend-EXTERNAL-IP>:8000/` — get the current IP with:
+Run one at a time, revert before trying the next.
+
+## Optional: crash-simulator
+
+A second workload to show the `restart_pod` path, deploy only when demoing:
 ```bash
-kubectl get svc -n autohealer backend
-```
-
-### 1. Backend rollback (gets fixed)
-
-```bash
-kubectl set image deployment/backend backend=gcr.io/auto-app-healer/autopilot-backend:invalidtag -n autohealer
-
-Watch it recover:
-```bash
-kubectl get pods -n autohealer -l app=backend -w
-kubectl logs -n autohealer deployment/autopilot-repairer -f --tail=20 | grep -A3 -i backend
-```
-
-**Expected**: `ImagePullBackOff` → isolator flags it → repairer picks `rollback_deployment` → pod comes back `Running 1/1` on the prior image.
-
-Revert anytime with:
-```bash
-kubectl rollout undo deployment/backend -n autohealer
-```
-
-### 2. crash-simulator (restart or escalate)
-
-Already running and cycling — no command needed, just watch:
-```bash
-kubectl get pods -n autohealer -l app=crash-simulator -w
-kubectl logs -n autohealer deployment/autopilot-repairer -f --tail=20 | grep -A5 -i crash-simulator
-```
-
-**Expected**: either `Restarted pod ... deleted` or a clean `ESCALATION REQUIRED` — the repairer keeps running either way.
-
-## Watching live
-
-[k9s](https://k9scli.io/) shows both pod status and logs in one interface — no separate terminal windows needed:
-```bash
-k9s -n autohealer
-```
-Press `l` on a selected pod to view its logs inline, `Esc` to go back, `/` to filter by name.
-
-Or, plain kubectl in split panes:
-```bash
-kubectl logs -n autohealer deployment/autopilot-isolator -f --tail=20
-kubectl logs -n autohealer deployment/autopilot-repairer -f --tail=20
+kubectl apply -f k8s/simulate-crash.yaml
+kubectl delete -f k8s/simulate-crash.yaml
 ```
 
 ## Automated validation
 
 ```bash
-cd agent
-python validate_simulators.py
+cd agent && python validate_simulators.py
 ```
-
-## Notes
-
-- Deployment-managed pods get recreated automatically when deleted or crashed — that's expected, not a bug.
-- Images are pushed to `gcr.io/auto-app-healer/...`; make sure your cluster can pull from there.
 
 ## Useful commands
 
@@ -92,3 +47,9 @@ kubectl describe pod <pod> -n autohealer
 kubectl logs -n autohealer -l app=autopilot-isolator --tail=50
 kubectl logs -n autohealer -l app=autopilot-repairer --tail=50
 ```
+
+## Notes
+
+- Deployment-managed pods get recreated automatically when deleted or crashed — expected, not a bug.
+- Images are pushed to `gcr.io/auto-app-healer/...`.
+- App details (React admin UI, RAG Memory tab): see `backend/README.md`.
