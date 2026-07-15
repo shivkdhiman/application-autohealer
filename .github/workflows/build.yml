@@ -76,4 +76,3 @@ jobs:
                        ./agent
           docker push $REGISTRY/autopilot-agent:${{ github.sha }}
           docker push $REGISTRY/autopilot-agent:latest
-          
