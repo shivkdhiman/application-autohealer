@@ -1,4 +1,4 @@
-# Application Autohealer
+# Application Autohealer Shiv Copy
 
 Self-healing Kubernetes demo on GKE. Two agents watch the cluster and use Claude to diagnose and fix failures.
 
