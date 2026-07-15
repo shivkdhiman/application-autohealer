@@ -83,3 +83,4 @@ jobs:
             -var="min_node_count=${{ github.event.inputs.min_node_count }}" \
             -var="max_node_count=${{ github.event.inputs.max_node_count }}" \
             -var="machine_type=${{ github.event.inputs.machine_type }}"
+            
