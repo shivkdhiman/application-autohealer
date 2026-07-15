@@ -58,11 +58,10 @@ jobs:
 
       - name: Wait for rollouts
         run: |
-          kubectl rollout status deployment/backend         --namespace=${{ env.NAMESPACE }} --timeout=120s
-          kubectl rollout status deployment/frontend        --namespace=${{ env.NAMESPACE }} --timeout=120s
-          kubectl rollout status deployment/autopilot-isolator --namespace=${{ env.NAMESPACE }} --timeout=120s
-          kubectl rollout status deployment/autopilot-repairer --namespace=${{ env.NAMESPACE }} --timeout=120s
+          kubectl rollout status deployment/backend         --namespace=${{ env.NAMESPACE }}
+          kubectl rollout status deployment/frontend        --namespace=${{ env.NAMESPACE }}
+          kubectl rollout status deployment/autopilot-isolator --namespace=${{ env.NAMESPACE }}
+          kubectl rollout status deployment/autopilot-repairer --namespace=${{ env.NAMESPACE }}
 
       - name: Show deployed pods
         run: kubectl get pods --namespace=${{ env.NAMESPACE }}
-        
