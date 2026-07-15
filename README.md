@@ -34,7 +34,7 @@ kubectl logs -n autohealer -l app=autopilot-isolator --tail=50
 kubectl logs -n autohealer -l app=autopilot-repairer --tail=50
 ```
 
-## Notes
+## Notes Shiv
 
 - Deployment-managed pods get recreated automatically when deleted or crashed — expected, not a bug.
 - Images are pushed to `gcr.io/auto-app-healer/...`.
