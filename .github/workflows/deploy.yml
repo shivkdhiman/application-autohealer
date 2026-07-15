@@ -65,4 +65,3 @@ jobs:
 
       - name: Show deployed pods
         run: kubectl get pods --namespace=${{ env.NAMESPACE }}
-        
