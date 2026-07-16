@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: gcr.io/auto-app-healer/autopilot-backend:latest
+          image: gcr.io/n8n-docs-502206/autopilot-backend:latest
           ports:
             - containerPort: 8000
           readinessProbe:
